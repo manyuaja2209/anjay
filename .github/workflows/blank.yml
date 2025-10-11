@@ -1,62 +1,58 @@
-name: RDP-Ubuntu
+name: SSH-Ubuntu
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp-ubuntu:
+  ssh-ubuntu:
     runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Update & Install Desktop + XRDP (XFCE)
+      - name: Update & Install OpenSSH Server
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
-          
-          sudo systemctl enable xrdp
-          sudo systemctl restart xrdp
-          
-          # Buat session XFCE saat login
-          echo xfce4-session > ~/.xsession
-          sudo cp ~/.xsession /etc/skel/
-          
-          # Allow RDP port (3389)
-          sudo ufw allow 3389/tcp || true
+          sudo apt-get install -y openssh-server
+          sudo systemctl enable ssh
+          sudo systemctl restart ssh
 
-      - name: Create RDP user
+      - name: Create SSH User
         run: |
-          USERNAME=rdpuser
+          USERNAME=sshuser
           PASSWORD=$(openssl rand -base64 12)
           sudo useradd -m -s /bin/bash $USERNAME
           echo "$USERNAME:$PASSWORD" | sudo chpasswd
-          echo "RDP_USERNAME=$USERNAME" >> $GITHUB_ENV
-          echo "RDP_PASSWORD=$PASSWORD" >> $GITHUB_ENV
+          sudo usermod -aG sudo $USERNAME
+          
+          echo "SSH_USERNAME=$USERNAME" >> $GITHUB_ENV
+          echo "SSH_PASSWORD=$PASSWORD" >> $GITHUB_ENV
 
-      - name: Install Tailscale
+      - name: Install & Connect Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
                             --hostname=gh-runner-${GITHUB_RUN_ID} \
-                            --accept-dns=true --accept-routes=true
+                            --ssh --accept-dns=true --accept-routes=true
 
       - name: Get Tailscale IP
         run: |
           TS_IP=$(tailscale ip -4 | head -n 1)
           echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
 
-      - name: Print Connection Info
+      - name: Print SSH Access Info
         run: |
           echo "======================================"
-          echo "🖥️  RDP to Ubuntu Runner"
-          echo "IP Address  : ${{ env.TAILSCALE_IP }}"
-          echo "Username    : ${{ env.RDP_USERNAME }}"
-          echo "Password    : ${{ env.RDP_PASSWORD }}"
+          echo "🔐 SSH Access to Ubuntu Runner"
+          echo "IP Address : ${{ env.TAILSCALE_IP }}"
+          echo "Username   : ${{ env.SSH_USERNAME }}"
+          echo "Password   : ${{ env.SSH_PASSWORD }}"
           echo "======================================"
+          echo "👉 Contoh koneksi:"
+          echo "ssh ${{ env.SSH_USERNAME }}@${{ env.TAILSCALE_IP }}"
 
       - name: Keep session alive
         run: |
           while true; do
-            echo "[$(date)] RDP Active on ${{ env.TAILSCALE_IP }}"
+            echo "[$(date)] SSH Active on ${{ env.TAILSCALE_IP }}"
             sleep 300
           done

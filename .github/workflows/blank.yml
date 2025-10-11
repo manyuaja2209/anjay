@@ -9,16 +9,19 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Update & Install Desktop + XRDP
+      - name: Update & Install Desktop + XRDP (XFCE)
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop xrdp
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
           
-          # enable XRDP service
           sudo systemctl enable xrdp
-          sudo systemctl start xrdp
+          sudo systemctl restart xrdp
           
-          # allow port 3389 (optional, Tailscale will handle internally)
+          # Buat session XFCE saat login
+          echo xfce4-session > ~/.xsession
+          sudo cp ~/.xsession /etc/skel/
+          
+          # Allow RDP port (3389)
           sudo ufw allow 3389/tcp || true
 
       - name: Create RDP user
@@ -33,7 +36,9 @@ jobs:
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
+                            --hostname=gh-runner-${GITHUB_RUN_ID} \
+                            --accept-dns=true --accept-routes=true
 
       - name: Get Tailscale IP
         run: |
@@ -44,14 +49,14 @@ jobs:
         run: |
           echo "======================================"
           echo "🖥️  RDP to Ubuntu Runner"
-          echo "IP Address  : $TAILSCALE_IP"
-          echo "Username    : $RDP_USERNAME"
-          echo "Password    : $RDP_PASSWORD"
+          echo "IP Address  : ${{ env.TAILSCALE_IP }}"
+          echo "Username    : ${{ env.RDP_USERNAME }}"
+          echo "Password    : ${{ env.RDP_PASSWORD }}"
           echo "======================================"
 
       - name: Keep session alive
         run: |
           while true; do
-            echo "[$(date)] RDP Active on $TAILSCALE_IP"
+            echo "[$(date)] RDP Active on ${{ env.TAILSCALE_IP }}"
             sleep 300
           done

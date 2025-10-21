@@ -1,4 +1,4 @@
-name: XRDP-KaliLinux
+name: XRDP-KaliLinux-Fixed
 
 on:
   workflow_dispatch:
@@ -9,16 +9,16 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: 🛠️ Update & Convert to Kali-like Environment
+      - name: 🛠️ Update & Install Kali Tools + XFCE
         run: |
           sudo apt-get update
           sudo apt-get install -y wget gnupg lsb-release
           echo "deb http://http.kali.org/kali kali-rolling main non-free contrib" | sudo tee /etc/apt/sources.list.d/kali.list
           wget -q -O - https://archive.kali.org/archive-key.asc | sudo apt-key add -
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y
-          sudo apt-get install -y kali-linux-core kali-tools-top10 xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils xrdp
-
+          # install tools tanpa dist-upgrade biar aman
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y kali-linux-core kali-tools-top10
+          sudo apt-get install -y xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils xrdp
           sudo systemctl enable xrdp
           sudo systemctl restart xrdp
 
@@ -29,21 +29,19 @@ jobs:
           sudo useradd -m -s /bin/bash $USERNAME
           echo "$USERNAME:$PASSWORD" | sudo chpasswd
           sudo usermod -aG sudo $USERNAME
-
           echo xfce4-session > /home/$USERNAME/.xsession
           sudo chown $USERNAME:$USERNAME /home/$USERNAME/.xsession
-
           echo "XRDP_USERNAME=$USERNAME" >> $GITHUB_ENV
           echo "XRDP_PASSWORD=$PASSWORD" >> $GITHUB_ENV
 
-      - name: 💾 Setup Swap (2GB)
+      - name: 💾 Setup Swap (6GB)
         run: |
-          sudo fallocate -l 2G /swapfile
+          sudo fallocate -l 6G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
           echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-          echo "✅ Swap 2GB aktif"
+          echo "✅ Swap 6GB aktif"
 
       - name: 🌐 Install & Connect Tailscale
         run: |
@@ -60,17 +58,18 @@ jobs:
       - name: 💻 Print XRDP Access Info
         run: |
           echo "======================================"
-          echo "🐉 Kali Linux XRDP Session"
+          echo "🐉 Kali Linux Tools + XRDP Session"
           echo "IP Address : ${{ env.TAILSCALE_IP }}"
           echo "Username   : ${{ env.XRDP_USERNAME }}"
           echo "Password   : ${{ env.XRDP_PASSWORD }}"
           echo "======================================"
-          echo "👉 Akses dengan RDP Client (Windows/macOS/Linux):"
+          echo "👉 Gunakan RDP Client:"
           echo "Server: ${{ env.TAILSCALE_IP }}"
           echo "Username: ${{ env.XRDP_USERNAME }}"
           echo "Password: ${{ env.XRDP_PASSWORD }}"
           echo "======================================"
-          echo "⚙️ Swap RAM sudah aktif otomatis (2GB)"
+          echo "⚙️ Swap RAM aktif: 6GB"
+          echo "✅ Kali Tools & XFCE siap digunakan!"
 
       - name: 🕓 Keep session alive
         run: |

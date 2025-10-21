@@ -1,0 +1,67 @@
+name: XRDP-macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  macos-remote:
+    runs-on: macos-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: 🍏 Update & Install Basic Tools
+        run: |
+          echo "🔧 Updating Homebrew..."
+          brew update || true
+          echo "🧩 Installing essential tools..."
+          brew install nmap hydra sqlmap john nikto metasploit || true
+
+      - name: 👤 User Info
+        run: |
+          echo "Current macOS user: $(whoami)"
+          echo "Home directory: $HOME"
+
+      - name: 💾 Check Swap
+        run: |
+          echo "⚙️ macOS uses dynamic swap by default:"
+          sysctl vm.swapusage
+
+      - name: 🌐 Install & Connect Tailscale
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          echo "🚀 Installing Tailscale..."
+          brew install tailscale
+          sudo tailscaled &
+          sleep 5
+          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} \
+                            --hostname=macos-remote-${GITHUB_RUN_ID} \
+                            --ssh --accept-dns=true --accept-routes=true
+
+      - name: 📡 Get Tailscale IP
+        run: |
+          TS_IP=$(tailscale ip -4 | head -n 1)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          echo "🧭 Tailscale IP: $TS_IP"
+
+      - name: 💻 Print Remote Access Info
+        run: |
+          echo "======================================"
+          echo "🍎 macOS Remote Environment"
+          echo "IP Address : ${{ env.TAILSCALE_IP }}"
+          echo "Username   : $(whoami)"
+          echo "Access via : SSH (Tailscale)"
+          echo "======================================"
+          echo "👉 Command:"
+          echo "ssh $(whoami)@${{ env.TAILSCALE_IP }}"
+          echo "======================================"
+          echo "🧰 Installed Tools:"
+          echo "- nmap, hydra, sqlmap, john, nikto, metasploit"
+          echo "💬 macOS Ready ✅"
+
+      - name: 🕓 Keep session alive
+        run: |
+          while true; do
+            echo "[$(date)] macOS Active on ${{ env.TAILSCALE_IP }}"
+            sleep 300
+          done

@@ -1,4 +1,4 @@
-name: XRDP-macOS
+name: macOS-Remote-Clean
 
 on:
   workflow_dispatch:
@@ -9,12 +9,14 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: 🍏 Update & Install Basic Tools
+      - name: 🍏 Homebrew update + basic utilities (clean)
         run: |
           echo "🔧 Updating Homebrew..."
+          which brew >/dev/null 2>&1 || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           brew update || true
-          echo "🧩 Installing essential tools..."
-          brew install nmap hydra sqlmap john nikto metasploit || true
+          echo "✅ Homebrew ready"
+          # Minimal utilities only (remove any pentest tools)
+          brew install git wget htop || true
 
       - name: 👤 User Info
         run: |
@@ -23,45 +25,52 @@ jobs:
 
       - name: 💾 Check Swap
         run: |
-          echo "⚙️ macOS uses dynamic swap by default:"
-          sysctl vm.swapusage
+          echo "⚙️ macOS uses dynamic swap by default (no manual swapfile):"
+          sysctl vm.swapusage || true
 
-      - name: 🌐 Install & Connect Tailscale
+      - name: 🌐 Install & Connect Tailscale (robust)
         env:
           TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
+          if [ -z "${TAILSCALE_AUTH_KEY}" ]; then
+            echo "ERROR: TAILSCALE_AUTH_KEY is empty. Set it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+
           echo "🚀 Installing Tailscale..."
-          brew install tailscale
-          sudo tailscaled &
-          sleep 5
-          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} \
-                            --hostname=macos-remote-${GITHUB_RUN_ID} \
-                            --ssh --accept-dns=true --accept-routes=true
+          brew install tailscale || true
 
-      - name: 📡 Get Tailscale IP
-        run: |
-          TS_IP=$(tailscale ip -4 | head -n 1)
-          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-          echo "🧭 Tailscale IP: $TS_IP"
+          echo "🔁 Starting tailscaled..."
+          sudo tailscaled >/tmp/tailscaled.log 2>&1 &
+          sleep 3
 
-      - name: 💻 Print Remote Access Info
+          echo "🔐 Bringing interface up..."
+          if ! sudo tailscale up --authkey="${TAILSCALE_AUTH_KEY}" --hostname="macos-remote-${GITHUB_RUN_ID}" --ssh --accept-dns=true --accept-routes=true 2>&1 | tee /tmp/tailscale_up.log; then
+            echo "---- tailscale_up.log ----"
+            sed -n '1,200p' /tmp/tailscale_up.log || true
+            echo "ERROR: tailscale up failed. Likely reasons:"
+            echo "  - Auth key is invalid/expired/revoked"
+            echo "  - You provided the wrong secret (API key instead of auth key)"
+            exit 1
+          fi
+
+          TS_IP=$(tailscale ip -4 | head -n 1 || true)
+          echo "TAILSCALE_IP=${TS_IP}" >> $GITHUB_ENV
+          echo "Tailscale connected, IP: ${TS_IP}"
+
+      - name: 📡 Print Remote Access Info
         run: |
           echo "======================================"
-          echo "🍎 macOS Remote Environment"
-          echo "IP Address : ${{ env.TAILSCALE_IP }}"
-          echo "Username   : $(whoami)"
-          echo "Access via : SSH (Tailscale)"
+          echo "🍎 macOS Remote (clean)"
+          echo "Tailscale IP : ${{ env.TAILSCALE_IP }}"
+          echo "User         : $(whoami)"
+          echo "Access       : SSH via Tailscale (no RDP/XRDP on macOS hosted runners)"
+          echo "Command      : ssh $(whoami)@${{ env.TAILSCALE_IP }}"
           echo "======================================"
-          echo "👉 Command:"
-          echo "ssh $(whoami)@${{ env.TAILSCALE_IP }}"
-          echo "======================================"
-          echo "🧰 Installed Tools:"
-          echo "- nmap, hydra, sqlmap, john, nikto, metasploit"
-          echo "💬 macOS Ready ✅"
 
       - name: 🕓 Keep session alive
         run: |
           while true; do
-            echo "[$(date)] macOS Active on ${{ env.TAILSCALE_IP }}"
+            echo "[$(date)] macOS runner alive (Tailscale: ${{ env.TAILSCALE_IP }})"
             sleep 300
           done

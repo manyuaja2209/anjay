@@ -20,20 +20,33 @@ jobs:
           sudo apt-get update || true  # biar lanjut meski ada warning minor
           
           # Install tool populer secara manual, biar gak narik base-files
-          sudo apt-get install -y nmap metasploit-framework sqlmap hydra john nikto
+          sudo apt-get install -y nmap metasploit-framework sqlmap hydra john nikto || true
           
           sudo systemctl enable xrdp
           sudo systemctl restart xrdp
 
-      - name: 👤 Create XRDP User
+      - name: 👤 Create XRDP User (fixed permissions)
         run: |
           USERNAME=kaliuser
           PASSWORD=$(openssl rand -base64 12)
-          sudo useradd -m -s /bin/bash $USERNAME
+
+          # create user if not exists (idempotent)
+          if ! id -u "$USERNAME" >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash "$USERNAME"
+          fi
+
+          # set password
           echo "$USERNAME:$PASSWORD" | sudo chpasswd
-          sudo usermod -aG sudo $USERNAME
-          echo xfce4-session > /home/$USERNAME/.xsession
-          sudo chown $USERNAME:$USERNAME /home/$USERNAME/.xsession
+
+          # add to sudo group
+          sudo usermod -aG sudo "$USERNAME"
+
+          # write .xsession safely as root, then set ownership to the user
+          echo "xfce4-session" | sudo tee /home/"$USERNAME"/.xsession > /dev/null
+          sudo chown "$USERNAME":"$USERNAME" /home/"$USERNAME"/.xsession
+          sudo chmod 644 /home/"$USERNAME"/.xsession
+
+          # export to env for later steps
           echo "XRDP_USERNAME=$USERNAME" >> $GITHUB_ENV
           echo "XRDP_PASSWORD=$PASSWORD" >> $GITHUB_ENV
 
@@ -47,9 +60,11 @@ jobs:
           echo "✅ Swap 6GB aktif"
 
       - name: 🌐 Install & Connect Tailscale
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
+          sudo tailscale up --authkey=${TAILSCALE_AUTH_KEY} \
                             --hostname=kali-lite-${GITHUB_RUN_ID} \
                             --ssh --accept-dns=true --accept-routes=true
 
